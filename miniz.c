@@ -606,7 +606,7 @@ mz_bool mz_zip_reader_extract_file_to_mem_no_alloc(mz_zip_archive *pZip, const c
 // init STORE read
 mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags );
 mz_bool mz_zip_reader_extract_file_handle(mz_zip_archive *pZip, const char *pFilename, mz_zip_io *pIOHandle, mz_uint flags );
-mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count );
+mz_uint64 mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count );
 mz_bool mz_zip_reader_extract_handle_seek(mz_zip_io *pIOHandle, mz_uint64 offset, int origin );
 mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_io *pIOHandle );
 
@@ -3593,7 +3593,6 @@ mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, m
     return MZ_FALSE;
 
 	if( pIOHandle ) {
-    //if (pZip->m_pRead(pZip->m_pIO_opaque, cur_file_ofs, pBuf, (size_t)needed_size) != needed_size)
 		pIOHandle->start_ofs = cur_file_ofs;
 		pIOHandle->end_ofs = cur_file_ofs + pIOHandle->file_stat.m_comp_size;
 		pIOHandle->cur_ofs = cur_file_ofs;
@@ -3601,20 +3600,23 @@ mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, m
 	}
 	return MZ_FALSE;
 }
-mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count )
+mz_uint64 mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count )
 {
 	if( pIOHandle ) {
-		size_t needed_size = stride * count;
 		size_t remains = pIOHandle->end_ofs - pIOHandle->cur_ofs;
-		if( needed_size > remains )
-				return MZ_FALSE;
-
-		if (pZip->m_pRead(pZip->m_pIO_opaque, pIOHandle->cur_ofs, pBuf, (size_t)needed_size) != needed_size)
+		size_t remaining_count = remains / stride;
+		size_t actual_count = remaining_count > count ? count : remaining_count;
+		if( actual_count <= 0 ) {
+			printf( "unable to return enough bytes" );
+			return 0;
+		}
+		size_t to_read = actual_count*stride;
+		if (pZip->m_pRead(pZip->m_pIO_opaque, pIOHandle->cur_ofs, pBuf, to_read) != to_read)
 			return MZ_FALSE;
-		pIOHandle->cur_ofs += needed_size;
-		return MZ_TRUE;
+		pIOHandle->cur_ofs += to_read;
+		return to_read;
 	}
-	return MZ_FALSE;
+	return 0;
 }
 mz_bool mz_zip_reader_extract_handle_seek(mz_zip_io *pIOHandle, mz_uint64 offset, int origin )
 {

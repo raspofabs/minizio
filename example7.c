@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
     // Add a new file to the archive. Note this is an IN-PLACE operation, so if it fails your archive is probably hosed (its central directory may not be complete) but it should be recoverable using zip -F or -FF. So use caution with this guy.
     // A more robust way to add a file to an archive would be to read it into memory, perform the operation, then write a new archive out to a temp file and then delete/rename the files.
     // Or, write a new archive to disk to a temp file, then delete/rename the files. For this test this API is fine.
-    status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, archive_filename, data, strlen(data) + 1, s_pComment, (uint16)strlen(s_pComment), MZ_BEST_COMPRESSION);
+    status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, archive_filename, data, strlen(data) + 1, s_pComment, (uint16)strlen(s_pComment), 0);
     if (!status)
     {
       printf("mz_zip_add_mem_to_archive_file_in_place failed!\n");
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
   }
 
   // Add a directory entry for testing
-  status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, "directory/", NULL, 0, "no comment", (uint16)strlen("no comment"), MZ_BEST_COMPRESSION);
+  status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, "directory/", NULL, 0, "no comment", (uint16)strlen("no comment"), 0);
   if (!status)
   {
     printf("mz_zip_add_mem_to_archive_file_in_place failed!\n");
@@ -131,10 +131,17 @@ int main(int argc, char *argv[])
       mz_zip_io io;
       memset(&io,0,sizeof(io));
 
-      mz_bool result = mz_zip_reader_extract_file_handle(&zip_archive, archive_filename, &io, 0 );
+		int file_index = mz_zip_reader_locate_file(&zip_archive, archive_filename, NULL, 0);
+		if (file_index < 0) {
+        printf("mz_zip_reader_locate_file( %s ) failed!\n", archive_filename);
+        mz_zip_reader_end(&zip_archive);
+        return EXIT_FAILURE;
+		}
+      mz_bool result = mz_zip_reader_extract_handle(&zip_archive, file_index, &io, 0 );
       if (!result)
       {
-        printf("mz_zip_reader_extract_handle() failed!\n");
+        printf("mz_zip_reader_extract_file_handle( %s ) failed!\n", archive_filename);
+		  printf( "File was method %i\n", io.file_stat.m_method );
         mz_zip_reader_end(&zip_archive);
         return EXIT_FAILURE;
       }
@@ -143,9 +150,16 @@ int main(int argc, char *argv[])
       buffer[uncomp_size] = 0;
 
       // Make sure the extraction really succeeded.
-      if ((uncomp_size != (strlen(buffer) + 1)) || (memcmp(buffer, data, strlen(data))))
+      if (uncomp_size != (strlen(buffer) + 1))
       {
-        printf("mz_zip_reader_extract_file_to_heap() failed to extract the proper data\n");
+        printf("mz_zip_reader_extract_file_to_heap() failed to extract the right amount of data (was %lu should be %lu)\n", uncomp_size, strlen( buffer ) + 1);
+        mz_zip_reader_end(&zip_archive);
+        return EXIT_FAILURE;
+      }
+
+      if ( memcmp(buffer, data, strlen(data) ) )
+      {
+        printf("mz_zip_reader_extract_file_to_heap() failed to extract the right data\n{%s}", buffer);
         mz_zip_reader_end(&zip_archive);
         return EXIT_FAILURE;
       }
