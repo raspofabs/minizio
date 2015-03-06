@@ -605,6 +605,7 @@ mz_bool mz_zip_reader_extract_file_to_mem_no_alloc(mz_zip_archive *pZip, const c
 
 // init STORE read
 mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags );
+mz_bool mz_zip_reader_extract_file_handle(mz_zip_archive *pZip, const char *pFilename, mz_zip_io *pIOHandle, mz_uint flags );
 mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count );
 mz_bool mz_zip_reader_extract_handle_seek(mz_zip_io *pIOHandle, mz_uint64 offset, int origin );
 mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_io *pIOHandle );
@@ -3548,6 +3549,13 @@ int mz_zip_reader_locate_file(mz_zip_archive *pZip, const char *pName, const cha
   return -1;
 }
 
+mz_bool mz_zip_reader_extract_file_handle(mz_zip_archive *pZip, const char *pFilename, mz_zip_io *pIOHandle, mz_uint flags )
+{
+  int file_index = mz_zip_reader_locate_file(pZip, pFilename, NULL, flags);
+  if (file_index < 0)
+    return MZ_FALSE;
+  return mz_zip_reader_extract_handle(pZip, file_index, pIOHandle, flags );
+}
 mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags )
 {
   mz_uint64 cur_file_ofs;

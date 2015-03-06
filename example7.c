@@ -1,4 +1,4 @@
-// example2.c - Simple demonstration of miniz.c's ZIP archive API's.
+// example7.c - demonstrating the storage mode only stdio like access api
 // Note this test deletes the test archive file "__mz_example2_test__.zip" in the current directory, then creates a new one with test data.
 // Public domain, May 15 2011, Rich Geldreich, richgel99@gmail.com. See "unlicense" statement at the end of tinfl.c.
 
@@ -36,8 +36,7 @@ int main(int argc, char *argv[])
   mz_bool status;
   size_t uncomp_size;
   mz_zip_archive zip_archive;
-  void *p;
-  const int N = 50;
+  const int N = 4;
   char data[2048];
   char archive_filename[64];
   static const char *s_Test_archive_filename = "__mz_example2_test__.zip";
@@ -60,7 +59,7 @@ int main(int argc, char *argv[])
     // Add a new file to the archive. Note this is an IN-PLACE operation, so if it fails your archive is probably hosed (its central directory may not be complete) but it should be recoverable using zip -F or -FF. So use caution with this guy.
     // A more robust way to add a file to an archive would be to read it into memory, perform the operation, then write a new archive out to a temp file and then delete/rename the files.
     // Or, write a new archive to disk to a temp file, then delete/rename the files. For this test this API is fine.
-    status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, archive_filename, data, strlen(data) + 1, s_pComment, (uint16)strlen(s_pComment), 0);
+    status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, archive_filename, data, strlen(data) + 1, s_pComment, (uint16)strlen(s_pComment), MZ_BEST_COMPRESSION);
     if (!status)
     {
       printf("mz_zip_add_mem_to_archive_file_in_place failed!\n");
@@ -69,7 +68,7 @@ int main(int argc, char *argv[])
   }
 
   // Add a directory entry for testing
-  status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, "directory/", NULL, 0, "no comment", (uint16)strlen("no comment"), 0);
+  status = mz_zip_add_mem_to_archive_file_in_place(s_Test_archive_filename, "directory/", NULL, 0, "no comment", (uint16)strlen("no comment"), MZ_BEST_COMPRESSION);
   if (!status)
   {
     printf("mz_zip_add_mem_to_archive_file_in_place failed!\n");
@@ -129,29 +128,30 @@ int main(int argc, char *argv[])
       sprintf(archive_filename, "%u.txt", i);
       sprintf(data, "%u %s %u", (N - 1) - i, s_pTest_str, i);
 
-      // Try to extract all the files to the heap.
-      p = mz_zip_reader_extract_file_to_heap(&zip_archive, archive_filename, &uncomp_size, 0);
-      if (!p)
+      mz_zip_io io;
+      memset(&io,0,sizeof(io));
+
+      mz_bool result = mz_zip_reader_extract_file_handle(&zip_archive, archive_filename, &io, 0 );
+      if (!result)
       {
-        printf("mz_zip_reader_extract_file_to_heap() failed!\n");
+        printf("mz_zip_reader_extract_handle() failed!\n");
         mz_zip_reader_end(&zip_archive);
         return EXIT_FAILURE;
       }
+      char buffer[1024*64];
+      uncomp_size = mz_zip_reader_extract_handle_read(&zip_archive, &io, buffer, 1, 1024 * 64 );
+      buffer[uncomp_size] = 0;
 
       // Make sure the extraction really succeeded.
-      if ((uncomp_size != (strlen(data) + 1)) || (memcmp(p, data, strlen(data))))
+      if ((uncomp_size != (strlen(buffer) + 1)) || (memcmp(buffer, data, strlen(data))))
       {
         printf("mz_zip_reader_extract_file_to_heap() failed to extract the proper data\n");
-        mz_free(p);
         mz_zip_reader_end(&zip_archive);
         return EXIT_FAILURE;
       }
 
       printf("Successfully extracted file \"%s\", size %u\n", archive_filename, (uint)uncomp_size);
-      printf("File data: \"%s\"\n", (const char *)p);
-
-      // We're done.
-      mz_free(p);
+      printf("File data: \"%s\"\n", (const char *)buffer);
     }
 
     // Close the archive, freeing any resources it was using

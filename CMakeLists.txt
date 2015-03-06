@@ -29,6 +29,7 @@ set(EXAMPLE3_SRC_LIST ${COMMON_SRC_LIST} example3.c)
 set(EXAMPLE4_SRC_LIST ${COMMON_SRC_LIST} example4.c)
 set(EXAMPLE5_SRC_LIST ${COMMON_SRC_LIST} example5.c)
 set(EXAMPLE6_SRC_LIST ${COMMON_SRC_LIST} example6.c)
+set(EXAMPLE7_SRC_LIST ${COMMON_SRC_LIST} example7.c)
 set(MINIZ_TESTER_SRC_LIST ${COMMON_SRC_LIST} miniz_tester.cpp miniz.c timer.cpp timer.h)
 
 # -fno-strict-aliasing is probably not required to build miniz.c (I've been testing with it not defined for a while), but it's what I'm used to from working with Visual Studio.
@@ -60,5 +61,7 @@ add_executable(example5 ${EXAMPLE5_SRC_LIST})
 
 add_executable(example6 ${EXAMPLE6_SRC_LIST})
 target_link_libraries(example6 m)
+
+add_executable(example7 ${EXAMPLE7_SRC_LIST})
 
 add_executable(miniz_tester ${MINIZ_TESTER_SRC_LIST})
