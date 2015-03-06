@@ -554,6 +554,13 @@ typedef struct mz_zip_archive_tag
 
 } mz_zip_archive;
 
+typedef struct mz_zip_io_tag
+{
+  mz_zip_archive_file_stat file_stat;
+  mz_uint64 start_ofs, end_ofs;
+  mz_uint64 cur_ofs;
+} mz_zip_io;
+
 typedef enum
 {
   MZ_ZIP_FLAG_CASE_SENSITIVE                = 0x0100,
@@ -595,6 +602,12 @@ int mz_zip_reader_locate_file(mz_zip_archive *pZip, const char *pName, const cha
 // Extracts a archive file to a memory buffer using no memory allocation.
 mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip, mz_uint file_index, void *pBuf, size_t buf_size, mz_uint flags, void *pUser_read_buf, size_t user_read_buf_size);
 mz_bool mz_zip_reader_extract_file_to_mem_no_alloc(mz_zip_archive *pZip, const char *pFilename, void *pBuf, size_t buf_size, mz_uint flags, void *pUser_read_buf, size_t user_read_buf_size);
+
+// init STORE read
+mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags );
+mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count );
+mz_bool mz_zip_reader_extract_handle_seek(mz_zip_archive *pZip, mz_zip_io *pIOHandle, mz_uint64 offset, int origin );
+mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_archive *pZip, mz_zip_io *pIOHandle );
 
 // Extracts a archive file to a memory buffer.
 mz_bool mz_zip_reader_extract_to_mem(mz_zip_archive *pZip, mz_uint file_index, void *pBuf, size_t buf_size, mz_uint flags);
@@ -3535,6 +3548,89 @@ int mz_zip_reader_locate_file(mz_zip_archive *pZip, const char *pName, const cha
   return -1;
 }
 
+mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags )
+{
+  mz_uint64 cur_file_ofs;
+  mz_uint32 local_header_u32[(MZ_ZIP_LOCAL_DIR_HEADER_SIZE + sizeof(mz_uint32) - 1) / sizeof(mz_uint32)]; mz_uint8 *pLocal_header = (mz_uint8 *)local_header_u32;
+
+  if (!mz_zip_reader_file_stat(pZip, file_index, &pIOHandle->file_stat))
+    return MZ_FALSE;
+
+  // Empty file, or a directory (but not always a directory - I've seen odd zips with directories that have compressed data which inflates to 0 bytes)
+  if (!pIOHandle->file_stat.m_comp_size)
+    return MZ_TRUE;
+
+  // Entry is a subdirectory (I've seen old zips with dir entries which have compressed deflate data which inflates to 0 bytes, but these entries claim to uncompress to 512 bytes in the headers).
+  // I'm torn how to handle this case - should it fail instead?
+  if (mz_zip_reader_is_file_a_directory(pZip, file_index))
+    return MZ_TRUE;
+
+  // Encryption and patch files are not supported.
+  if (pIOHandle->file_stat.m_bit_flag & (1 | 32))
+    return MZ_FALSE;
+
+  // This function only supports stored or get raw
+  if ((!(flags & MZ_ZIP_FLAG_COMPRESSED_DATA)) && (pIOHandle->file_stat.m_method != 0) )
+    return MZ_FALSE;
+
+  // Read and parse the local directory entry.
+  cur_file_ofs = pIOHandle->file_stat.m_local_header_ofs;
+  if (pZip->m_pRead(pZip->m_pIO_opaque, cur_file_ofs, pLocal_header, MZ_ZIP_LOCAL_DIR_HEADER_SIZE) != MZ_ZIP_LOCAL_DIR_HEADER_SIZE)
+    return MZ_FALSE;
+  if (MZ_READ_LE32(pLocal_header) != MZ_ZIP_LOCAL_DIR_HEADER_SIG)
+    return MZ_FALSE;
+
+  cur_file_ofs += MZ_ZIP_LOCAL_DIR_HEADER_SIZE + MZ_READ_LE16(pLocal_header + MZ_ZIP_LDH_FILENAME_LEN_OFS) + MZ_READ_LE16(pLocal_header + MZ_ZIP_LDH_EXTRA_LEN_OFS);
+  if ((cur_file_ofs + pIOHandle->file_stat.m_comp_size) > pZip->m_archive_size)
+    return MZ_FALSE;
+
+	if( pIOHandle ) {
+    //if (pZip->m_pRead(pZip->m_pIO_opaque, cur_file_ofs, pBuf, (size_t)needed_size) != needed_size)
+		pIOHandle->start_ofs = cur_file_ofs;
+		pIOHandle->end_ofs = cur_file_ofs + pIOHandle->file_stat.m_comp_size;
+		pIOHandle->cur_ofs = cur_file_ofs;
+		return MZ_TRUE;
+	}
+	return MZ_FALSE;
+}
+mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count )
+{
+	if( pIOHandle ) {
+		size_t needed_size = stride * count;
+		size_t remains = pIOHandle->end_ofs - pIOHandle->cur_ofs;
+		if( needed_size > remains )
+				return MZ_FALSE;
+
+		if (pZip->m_pRead(pZip->m_pIO_opaque, pIOHandle->cur_ofs, pBuf, (size_t)needed_size) != needed_size)
+			return MZ_FALSE;
+		pIOHandle->cur_ofs += needed_size;
+		return MZ_TRUE;
+	}
+	return MZ_FALSE;
+}
+mz_bool mz_zip_reader_extract_handle_seek(mz_zip_archive *pZip, mz_zip_io *pIOHandle, mz_uint64 offset, int origin )
+{
+	if( pIOHandle ) {
+		switch( origin ) {
+		case SEEK_SET: offset += pIOHandle->start_ofs; break;
+		case SEEK_CUR: offset += pIOHandle->cur_ofs; break;
+		case SEEK_END: offset += pIOHandle->end_ofs; break;
+		default: return MZ_FALSE;
+		}
+		if( offset >= pIOHandle->start_ofs && offset <= pIOHandle->end_ofs ) {
+			pIOHandle->cur_ofs = offset;
+			return MZ_TRUE;
+		}
+	}
+	return MZ_FALSE;
+}
+mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_archive *pZip, mz_zip_io *pIOHandle )
+{
+	if( pIOHandle ) {
+		return pIOHandle->cur_ofs - pIOHandle->start_ofs;
+	}
+	return 0;
+}
 mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip, mz_uint file_index, void *pBuf, size_t buf_size, mz_uint flags, void *pUser_read_buf, size_t user_read_buf_size)
 {
   int status = TINFL_STATUS_DONE;
