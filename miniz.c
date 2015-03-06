@@ -606,8 +606,8 @@ mz_bool mz_zip_reader_extract_file_to_mem_no_alloc(mz_zip_archive *pZip, const c
 // init STORE read
 mz_bool mz_zip_reader_extract_handle(mz_zip_archive *pZip, mz_uint file_index, mz_zip_io *pIOHandle, mz_uint flags );
 mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHandle, void *pBuf, size_t stride, size_t count );
-mz_bool mz_zip_reader_extract_handle_seek(mz_zip_archive *pZip, mz_zip_io *pIOHandle, mz_uint64 offset, int origin );
-mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_archive *pZip, mz_zip_io *pIOHandle );
+mz_bool mz_zip_reader_extract_handle_seek(mz_zip_io *pIOHandle, mz_uint64 offset, int origin );
+mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_io *pIOHandle );
 
 // Extracts a archive file to a memory buffer.
 mz_bool mz_zip_reader_extract_to_mem(mz_zip_archive *pZip, mz_uint file_index, void *pBuf, size_t buf_size, mz_uint flags);
@@ -3608,7 +3608,7 @@ mz_bool mz_zip_reader_extract_handle_read(mz_zip_archive *pZip, mz_zip_io *pIOHa
 	}
 	return MZ_FALSE;
 }
-mz_bool mz_zip_reader_extract_handle_seek(mz_zip_archive *pZip, mz_zip_io *pIOHandle, mz_uint64 offset, int origin )
+mz_bool mz_zip_reader_extract_handle_seek(mz_zip_io *pIOHandle, mz_uint64 offset, int origin )
 {
 	if( pIOHandle ) {
 		switch( origin ) {
@@ -3624,7 +3624,7 @@ mz_bool mz_zip_reader_extract_handle_seek(mz_zip_archive *pZip, mz_zip_io *pIOHa
 	}
 	return MZ_FALSE;
 }
-mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_archive *pZip, mz_zip_io *pIOHandle )
+mz_uint64 mz_zip_reader_extract_handle_tell(mz_zip_io *pIOHandle )
 {
 	if( pIOHandle ) {
 		return pIOHandle->cur_ofs - pIOHandle->start_ofs;
